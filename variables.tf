@@ -7,13 +7,13 @@ variable "zone_id" {
 variable "egress_from_port" {
   type        = number
   default     = 0
-  description = "[from_port]DocumentDB initial port range for egress (e.g. `0`)"
+  description = "[from_port] DocumentDB initial port range for egress (e.g. `0`)"
 }
 
 variable "egress_to_port" {
   type        = number
   default     = 0
-  description = "[to_port]DocumentDB initial port range for egress (e.g. `65535`)"
+  description = "[to_port] DocumentDB initial port range for egress (e.g. `65535`)"
 }
 
 variable "egress_protocol" {
@@ -49,7 +49,7 @@ variable "allowed_cidr_blocks" {
 variable "external_security_group_id_list" {
   type        = list(string)
   default     = []
-  description = "List of external security group IDs to attach to the Document DB"
+  description = "List of external security group IDs to attach to the DocumentDB"
 }
 
 variable "vpc_id" {
@@ -62,7 +62,6 @@ variable "subnet_ids" {
   description = "List of VPC subnet IDs to place DocumentDB instances in"
 }
 
-# https://docs.aws.amazon.com/documentdb/latest/developerguide/limits.html#suported-instance-types
 variable "instance_class" {
   type        = string
   default     = "db.r4.large"
@@ -194,19 +193,19 @@ variable "auto_minor_version_upgrade" {
 
 variable "enabled_cloudwatch_logs_exports" {
   type        = list(string)
-  description = "List of log types to export to cloudwatch. The following log types are supported: `audit`, `profiler`"
+  description = "List of log types to export to CloudWatch. The following log types are supported: `audit`, `profiler`"
   default     = []
 }
 
 variable "cluster_dns_name" {
   type        = string
-  description = "Name of the cluster CNAME record to create in the parent DNS zone specified by `zone_id`. If left empty, the name will be auto-asigned using the format `master.var.name`"
+  description = "Name of the cluster CNAME record to create in the parent DNS zone specified by `zone_id`. If left empty, the name will be auto-assigned using the format `master.var.name`"
   default     = ""
 }
 
 variable "reader_dns_name" {
   type        = string
-  description = "Name of the reader endpoint CNAME record to create in the parent DNS zone specified by `zone_id`. If left empty, the name will be auto-asigned using the format `replicas.var.name`"
+  description = "Name of the reader endpoint CNAME record to create in the parent DNS zone specified by `zone_id`. If left empty, the name will be auto-assigned using the format `replicas.var.name`"
   default     = ""
 }
 
@@ -231,11 +230,23 @@ variable "ssm_parameter_enabled" {
 variable "ssm_parameter_path_prefix" {
   type        = string
   default     = "/docdb/master-password/"
-  description = "The path prefix for the created SSM parameter e.g. '/docdb/master-password/dev'. `ssm_parameter_enabled` must be set to `true` for this to take affect."
+  description = "The path prefix for the created SSM parameter e.g. '/docdb/master-password/dev'. `ssm_parameter_enabled` must be set to `true` for this to take effect."
 }
 
 variable "allow_major_version_upgrade" {
   type        = bool
   description = "Specifies whether major version upgrades are allowed. See https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/docdb_cluster#allow_major_version_upgrade"
   default     = false
+}
+
+variable "is_global_cluster" {
+  type        = bool
+  default     = false
+  description = "Indicates whether to create a global DocumentDB cluster."
+}
+
+variable "secondary_instance_class" {
+  type        = string
+  description = "The instance class to use for the secondary DocumentDB cluster."
+  default     = "db.r4.large"
 }

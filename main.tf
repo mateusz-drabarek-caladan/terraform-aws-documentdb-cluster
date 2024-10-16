@@ -56,15 +56,24 @@ resource "random_password" "password" {
   special = false
 }
 
-resource "aws_docdb_cluster" "default" {
+resource "aws_docdb_global_cluster" "default" {
+  count                       = module.this.enabled && var.is_global_cluster ? 1 : 0
+  global_cluster_identifier   = module.this.id
+  engine                      = var.engine
+  engine_version              = var.engine_version
+  deletion_protection         = var.deletion_protection
+  storage_encrypted           = var.storage_encrypted
+}
+
+resource "aws_docdb_cluster" "primary" {
   count                           = module.this.enabled ? 1 : 0
-  cluster_identifier              = module.this.id
+  cluster_identifier              = "${module.this.id}-primary"
   master_username                 = var.master_username
   master_password                 = var.master_password != "" ? var.master_password : random_password.password[0].result
   backup_retention_period         = var.retention_period
   preferred_backup_window         = var.preferred_backup_window
   preferred_maintenance_window    = var.preferred_maintenance_window
-  final_snapshot_identifier       = lower(module.this.id)
+  final_snapshot_identifier       = lower("${module.this.id}-primary")
   skip_final_snapshot             = var.skip_final_snapshot
   deletion_protection             = var.deletion_protection
   apply_immediately               = var.apply_immediately
@@ -80,13 +89,16 @@ resource "aws_docdb_cluster" "default" {
   engine_version                  = var.engine_version
   enabled_cloudwatch_logs_exports = var.enabled_cloudwatch_logs_exports
   allow_major_version_upgrade     = var.allow_major_version_upgrade
-  tags                            = module.this.tags
+
+  depends_on = [
+    aws_docdb_global_cluster.default
+  ]
 }
 
-resource "aws_docdb_cluster_instance" "default" {
+resource "aws_docdb_cluster_instance" "primary" {
   count                        = module.this.enabled ? var.cluster_size : 0
-  identifier                   = "${module.this.id}-${count.index + 1}"
-  cluster_identifier           = join("", aws_docdb_cluster.default[*].id)
+  identifier                   = "${module.this.id}-primary-${count.index + 1}"
+  cluster_identifier           = aws_docdb_cluster.primary[0].id
   apply_immediately            = var.apply_immediately
   preferred_maintenance_window = var.preferred_maintenance_window
   instance_class               = var.instance_class
@@ -95,6 +107,60 @@ resource "aws_docdb_cluster_instance" "default" {
   enable_performance_insights  = var.enable_performance_insights
   ca_cert_identifier           = var.ca_cert_identifier
   tags                         = module.this.tags
+
+  depends_on = [
+    aws_docdb_cluster.primary
+  ]
+}
+
+resource "aws_docdb_cluster" "secondary" {
+  count                           = module.this.enabled && var.is_global_cluster ? 1 : 0
+  cluster_identifier              = "${module.this.id}-secondary"
+  master_username                 = var.master_username
+  master_password                 = var.master_password != "" ? var.master_password : random_password.password[0].result
+  global_cluster_identifier       = aws_docdb_global_cluster.default[0].id
+  backup_retention_period         = var.retention_period
+  preferred_backup_window         = var.preferred_backup_window
+  preferred_maintenance_window    = var.preferred_maintenance_window
+  final_snapshot_identifier       = lower("${module.this.id}-secondary")
+  skip_final_snapshot             = var.skip_final_snapshot
+  deletion_protection             = var.deletion_protection
+  apply_immediately               = var.apply_immediately
+  storage_encrypted               = var.storage_encrypted
+  storage_type                    = var.storage_type
+  kms_key_id                      = var.kms_key_id
+  port                            = var.db_port
+  snapshot_identifier             = var.snapshot_identifier
+  vpc_security_group_ids          = concat([join("", aws_security_group.default[*].id)], var.external_security_group_id_list)
+  db_subnet_group_name            = join("", aws_docdb_subnet_group.default[*].name)
+  db_cluster_parameter_group_name = join("", aws_docdb_cluster_parameter_group.default[*].name)
+  engine                          = var.engine
+  engine_version                  = var.engine_version
+  enabled_cloudwatch_logs_exports = var.enabled_cloudwatch_logs_exports
+  allow_major_version_upgrade     = var.allow_major_version_upgrade
+
+  depends_on = [
+    aws_docdb_global_cluster.default,
+    aws_docdb_cluster.primary
+  ]
+}
+
+resource "aws_docdb_cluster_instance" "secondary" {
+  count                        = module.this.enabled && var.is_global_cluster ? 1 : 0
+  identifier                   = "${module.this.id}-secondary-1"
+  cluster_identifier           = aws_docdb_cluster.secondary[0].id
+  apply_immediately            = var.apply_immediately
+  preferred_maintenance_window = var.preferred_maintenance_window
+  instance_class               = var.secondary_instance_class
+  engine                       = var.engine
+  auto_minor_version_upgrade   = var.auto_minor_version_upgrade
+  enable_performance_insights  = var.enable_performance_insights
+  ca_cert_identifier           = var.ca_cert_identifier
+  tags                         = module.this.tags
+
+  depends_on = [
+    aws_docdb_cluster.secondary
+  ]
 }
 
 resource "aws_docdb_subnet_group" "default" {
@@ -105,7 +171,6 @@ resource "aws_docdb_subnet_group" "default" {
   tags        = module.this.tags
 }
 
-# https://docs.aws.amazon.com/documentdb/latest/developerguide/db-cluster-parameter-group-create.html
 resource "aws_docdb_cluster_parameter_group" "default" {
   count       = module.this.enabled ? 1 : 0
   name        = module.this.id
@@ -150,24 +215,7 @@ module "dns_replicas" {
   enabled  = module.this.enabled && var.zone_id != "" ? true : false
   dns_name = local.replicas_dns_name
   zone_id  = var.zone_id
-  records  = coalescelist(aws_docdb_cluster.default[*].reader_endpoint, [""])
-
-  context = module.this.context
-}
-
-module "ssm_write_db_password" {
-  source  = "cloudposse/ssm-parameter-store/aws"
-  version = "0.13.0"
-
-  enabled = module.this.enabled && var.ssm_parameter_enabled == true ? true : false
-  parameter_write = [
-    {
-      name        = format("%s%s", var.ssm_parameter_path_prefix, module.this.id)
-      value       = var.master_password != "" ? var.master_password : random_password.password[0].result
-      type        = "SecureString"
-      description = "Master password for ${module.this.id} DocumentDB cluster"
-    }
-  ]
+  records  = coalescelist(aws_docdb_cluster_instance.default[*].endpoint, [""])
 
   context = module.this.context
 }
