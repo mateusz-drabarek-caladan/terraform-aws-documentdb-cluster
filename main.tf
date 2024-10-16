@@ -203,7 +203,7 @@ module "dns_master" {
   enabled  = module.this.enabled && var.zone_id != "" ? true : false
   dns_name = local.cluster_dns_name
   zone_id  = var.zone_id
-  records  = coalescelist(aws_docdb_cluster.default[*].endpoint, [""])
+  records  = coalescelist(aws_docdb_cluster.primary[*].endpoint, [""])
 
   context = module.this.context
 }
@@ -215,7 +215,7 @@ module "dns_replicas" {
   enabled  = module.this.enabled && var.zone_id != "" ? true : false
   dns_name = local.replicas_dns_name
   zone_id  = var.zone_id
-  records  = coalescelist(aws_docdb_cluster_instance.default[*].endpoint, [""])
+  records  = coalescelist(aws_docdb_cluster_instance.primary[*].endpoint, [""])
 
   context = module.this.context
 }
